@@ -1,0 +1,74 @@
+{
+  "model": {
+    "input_file": "../inputs/SensorFusion_seg_input.py",
+    "architecture_file" : "../encoder/fcn8_vgg_SensorFusion.py",
+    "objective_file" : "../decoder/SensorFusion_multiloss.py",
+    "optimizer_file" : "../optimizer/generic_optimizer.py",
+    "evaluator_file" : "../evals/SensorFusion_eval.py"
+  },
+  "path": ["../incl"],
+
+  "data": {
+    "train_file" : "data_SensorFusion/train.txt",
+    "val_file" : "data_SensorFusion/val.txt",
+    "unlabeled_color" : [0,0,0,0],
+    "grass_color" : [1,0,255,0],
+    "foliage_color" : [2,0,128,0],
+    "wood_color" : [3,128,  32,  64],
+    "dirt_color" : [4,128,  32,  32],
+    "pavement_color" : [5, 32,  32,  128],
+    "rock_color" : [6,75,  75,  75],
+    "water_color" : [7, 0,  0,  255],
+    "sky_color" : [8, 157,  250,  255],
+    "building_color" : [9,255,  0,  0],
+    "vgg_url": "https://dl.dropboxusercontent.com/u/50333326/vgg16.npy",
+    "kitti_url": ""
+  },
+
+  "arch": {
+    "num_classes" : 10,
+    "image_size" : 50,
+    "weight": [0.01, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    "num_channels" : 3,
+    "whitening": false
+  },
+
+  "jitter": {
+    "random_resize": false,
+    "lower_size": 0.6,
+    "upper_size": 1.4,
+    "sig": 0.15,
+    "res_chance": 0.4,
+    "random_crop": true,
+    "max_crop": 32,
+    "crop_chance": 0.8,
+    "fix_shape": false,
+    "reseize_image": true,
+    "image_height" : 512,
+    "image_width" : 612,
+    "augment_level": 2
+  },
+
+  "logging": {
+    "display_iter": 100,
+    "eval_iter": 2500,
+    "write_iter": 5000,
+    "save_iter": 5000,
+    "image_iter": 2500
+  },
+
+  "solver": {
+      "opt": "Adam",
+      "batch_size": 4,
+      "epsilon": 0.0000001,
+      "adam_eps": 0.0000001,
+      "threads": 4,
+      "learning_rate": 2e-6,
+      "learning_rate_step": null,
+      "max_steps": 50000
+  },
+  "use_fc_wd": true,
+  "loss": "xentropy",
+  "clip_norm" : 1.0,
+  "wd": 5e-4
+}

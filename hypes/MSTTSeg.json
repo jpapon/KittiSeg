@@ -1,0 +1,70 @@
+{
+  "model": {
+    "input_file": "../inputs/mstt_seg_input.py",
+    "architecture_file" : "../encoder/fcn8_vgg_MSTT.py",
+    "objective_file" : "../decoder/MSTT_multiloss.py",
+    "optimizer_file" : "../optimizer/generic_optimizer.py",
+    "evaluator_file" : "../evals/MSTT_eval.py"
+  },
+  "path": ["../incl"],
+
+  "data": {
+    "train_file" : "data_MSTT/train.txt",
+    "val_file" : "data_MSTT/val.txt",
+    "ground_color" : [0,0,0,255],
+    "rock_color" : [1,255,0,0],
+    "tube0_color" : [2,0,255,0],
+    "tube1_color" : [3,255,255,255],
+    "tube2_color" : [4,255,255,0],
+    "vgg_url": "https://dl.dropboxusercontent.com/u/50333326/vgg16.npy",
+    "kitti_url": ""
+  },
+
+  "arch": {
+    "num_classes" : 5,
+    "image_size" : 50,
+    "weight": [1, 1, 1, 1, 1],
+    "num_channels" : 3,
+    "whitening": false
+  },
+
+  "jitter": {
+    "random_resize": false,
+    "lower_size": 0.6,
+    "upper_size": 1.4,
+    "sig": 0.15,
+    "res_chance": 0.4,
+    "random_crop": true,
+    "max_crop": 32,
+    "crop_chance": 0.8,
+    "fix_shape": false,
+    "reseize_image": false,
+    "image_height" : 1024,
+    "image_width" : 1224,
+
+    "augment_level": 2
+  },
+
+  "logging": {
+    "display_iter": 100,
+    "eval_iter": 500,
+    "write_iter": 500,
+    "save_iter": 500,
+    "image_iter": 500
+  },
+
+  "solver": {
+      "opt": "Adam",
+      "batch_size": 1,
+      "epsilon": 0.00001,
+      "adam_eps": 0.00001,
+      "threads": 4,
+      "learning_rate": 1e-5,
+      "learning_rate_step": null,
+      "max_steps": 30000
+  },
+  "use_fc_wd": true,
+  "loss": "xentropy",
+  "clip_norm" : 1.0,
+  "wd": 5e-4
+}
