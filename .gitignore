@@ -6,9 +6,17 @@ __pycache__/
 
 sftp-config.json
 
+run*.sh
+demo*.sh
+.nfs*
+
 DATA/*
 RUNS/*
 output/*
+
+hypes/*_*_*.json
+
+.directory
 
 # C extensions
 *.so
