@@ -2,7 +2,7 @@
 """
 Created on Thu Dec 17 11:50:47 2015.
 
-@author: teichman
+@author: jpapon
 """
 
 from __future__ import absolute_import
@@ -132,27 +132,44 @@ def jitter_input(hypes, image, gt_image):
     if jitter['random_crop'] and crop_chance > random.random():
         max_crop = jitter['max_crop']
         crop_chance = jitter['crop_chance']
-        image, gt_image = random_crop(image, gt_image, max_crop)
+        image, gt_image = random_crop_soft(image, gt_image, max_crop)
 
-    if jitter['fix_shape']:
-        image_height = jitter['image_height']
-        image_width = jitter['image_width']
-        assert not jitter['reseize_image']
-        image, gt_image = resize_label_image_with_pad(image, gt_image,
-                                                      image_height,
-                                                      image_width)
-    elif jitter['reseize_image']:
+    if jitter['reseize_image']:
         image_height = jitter['image_height']
         image_width = jitter['image_width']
         image, gt_image = resize_label_image(image, gt_image,
                                              image_height,
                                              image_width)
 
+    if jitter['crop_patch']:
+        patch_height = jitter['patch_height']
+        patch_width = jitter['patch_width']
+        image, gt_image = random_crop(image, gt_image,
+                                      patch_height, patch_width)
+
     assert(image.shape[:-1] == gt_image.shape[:-1])
     return image, gt_image
 
 
-def random_crop(image, gt_image, max_crop):
+def random_crop(image, gt_image, height, width):
+    old_width = image.shape[1]
+    old_height = image.shape[0]
+    assert(old_width >= width)
+    assert(old_height >= height)
+    max_x = max(old_height-height, 0)
+    max_y = max(old_width-width, 0)
+    offset_x = random.randint(0, max_x)
+    offset_y = random.randint(0, max_y)
+    image = image[offset_x:offset_x+height, offset_y:offset_y+width]
+    gt_image = gt_image[offset_x:offset_x+height, offset_y:offset_y+width]
+
+    assert(image.shape[0] == height)
+    assert(image.shape[1] == width)
+
+    return image, gt_image
+
+
+def random_crop_soft(image, gt_image, max_crop):
     offset_x = random.randint(1, max_crop)
     offset_y = random.randint(1, max_crop)
 
@@ -189,7 +206,6 @@ def resize_label_image(image, gt_image, image_height, image_width):
     image = scipy.misc.imresize(image, size=(image_height, image_width),
                                 interp='cubic')
     shape = gt_image.shape
-    print ("GT IMAGE SHAPE {}".format(shape))
     gt_zero = np.zeros([shape[0], shape[1], 1])
     gt_image = np.concatenate((gt_image, gt_zero), axis=2)
     gt_image = scipy.misc.imresize(gt_image, size=(image_height, image_width),
@@ -207,8 +223,8 @@ def random_resize(image, gt_image, lower_size, upper_size, sig):
         factor = upper_size
     image = scipy.misc.imresize(image, factor)
     shape = gt_image.shape
-    #gt_zero = np.zeros([shape[0], shape[1], 1])
-    #gt_image = np.concatenate((gt_image, gt_zero), axis=2)
+    gt_zero = np.zeros([shape[0], shape[1], 1])
+    gt_image = np.concatenate((gt_image, gt_zero), axis=2)
     gt_image = scipy.misc.imresize(gt_image, factor, interp='nearest')
     gt_image = gt_image[:, :, 0:2]/255
     return image, gt_image
@@ -235,9 +251,16 @@ def create_queues(hypes, phase):
     arch = hypes['arch']
     dtypes = [tf.float32, tf.int32]
 
-    if hypes['jitter']['fix_shape']:
-        height = hypes['jitter']['image_height']
-        width = hypes['jitter']['image_width']
+    shape_known = hypes['jitter']['reseize_image'] \
+        or hypes['jitter']['crop_patch']
+
+    if shape_known:
+        if hypes['jitter']['crop_patch']:
+            height = hypes['jitter']['patch_height']
+            width = hypes['jitter']['patch_width']
+        else:
+            height = hypes['jitter']['image_height']
+            width = hypes['jitter']['image_width']
         channel = hypes['arch']['num_channels']
         num_classes = hypes['arch']['num_classes']
         shapes = [[height, width, channel],
@@ -258,7 +281,6 @@ def start_enqueuing_threads(hypes, q, phase, sess):
     """Start enqueuing threads."""
     image_pl = tf.placeholder(tf.float32)
     label_pl = tf.placeholder(tf.int32)
-
     data_dir = hypes['dirs']['data_dir']
 
     def make_feed(data):
@@ -299,8 +321,6 @@ def _read_processed_image(hypes, q, phase):
         if augment_level > 1:
             image = tf.image.random_hue(image, max_delta=0.15)
             image = tf.image.random_saturation(image, lower=0.5, upper=1.6)
-        image = tf.minimum(image, 1.0)
-        image = tf.maximum(image, 0.0)
 
     if 'whitening' not in hypes['arch'] or \
             hypes['arch']['whitening']:
@@ -356,106 +376,56 @@ def shuffle_join(tensor_list_list, capacity,
     return dequeued
 
 
-def _processe_image(hypes, image, label_image):
+def _processe_image(hypes, image):
     # Because these operations are not commutative, consider randomizing
     # randomize the order their operation.
     augment_level = hypes['jitter']['augment_level']
-    height = hypes['jitter']['image_height']
-    width = hypes['jitter']['image_width']
-    channel = hypes['arch']['num_channels']
-    num_classes = hypes['arch']['num_classes']
-
-    if (augment_level > 0):
-        image, label_image = RandomCrop(image, label_image, 0.6, 1.0)
-        image = tf.image.resize_images (image, [height,width], method = tf.image.ResizeMethod.BILINEAR)
-        label_image = tf.image.resize_images (label_image, [height,width], method = tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    if augment_level > 1:
+    if augment_level > 0:
         image = tf.image.random_brightness(image, max_delta=30)
         image = tf.image.random_contrast(image, lower=0.75, upper=1.25)
-    if augment_level > 2:
+    if augment_level > 1:
         image = tf.image.random_hue(image, max_delta=0.15)
         image = tf.image.random_saturation(image, lower=0.5, upper=1.6)
 
-    image = tf.minimum(image, 255.0)
-    image = tf.maximum(image, 0.0)
-
-    return image, label_image
-
-def RandomCrop(image, label_image, fMin, fMax):
-    from tensorflow.python.ops import math_ops
-    from tensorflow.python.ops import array_ops
-    from tensorflow.python.framework import ops
-    image = ops.convert_to_tensor(image, name='image')
-
-    if fMin <= 0.0 or fMin > 1.0:
-      raise ValueError('fMin must be within (0, 1]')
-    if fMax <= 0.0 or fMax > 1.0:
-      raise ValueError('fMin must be within (0, 1]')
-
-    img_shape = array_ops.shape(image)
-    depth = image.get_shape()[2]
-    classes = label_image.get_shape()[2]
-    my_frac2 = tf.random_uniform([1], minval=fMin, maxval=fMax, dtype=tf.float32, seed=42, name="uniform_dist")
-    fraction_offset = tf.cast(math_ops.div(1.0 , math_ops.div(math_ops.sub(1.0,my_frac2[0]), 2.0)),tf.int32)
-    bbox_h_start = math_ops.div(img_shape[0], fraction_offset)
-    bbox_w_start = math_ops.div(img_shape[1], fraction_offset)
-    bbox_h_size = img_shape[0] - bbox_h_start * 2
-    bbox_w_size = img_shape[1] - bbox_w_start * 2
-
-    bbox_begin = array_ops.pack([bbox_h_start, bbox_w_start, 0])
-    bbox_size = array_ops.pack([bbox_h_size, bbox_w_size, -1])
-
-    image = array_ops.slice(image, bbox_begin, bbox_size)
-    label_image = array_ops.slice(label_image, bbox_begin, bbox_size)
-    # The first two dimensions are dynamic and unknown.
-    image.set_shape([None, None, depth])
-    label_image.set_shape([None, None, classes])
-    return image, label_image
+    return image
 
 
 def inputs(hypes, q, phase):
     """Generate Inputs images."""
-
-    image, label = q.dequeue()
-    image = tf.image.convert_image_dtype(image,tf.float32);
     if phase == 'val':
+        image, label = q.dequeue()
         image = tf.expand_dims(image, 0)
         label = tf.expand_dims(label, 0)
         return image, label
 
-    #image = tf.Print (image, [tf.shape(image)], " Shape ")
+    shape_known = hypes['jitter']['reseize_image'] \
+        or hypes['jitter']['crop_patch']
 
-    nc = hypes["arch"]["num_classes"]
-    label.set_shape([None, None, nc])
-    image.set_shape([None, None, 3])
+    if not shape_known:
+        image, label = q.dequeue()
+        nc = hypes["arch"]["num_classes"]
+        label.set_shape([None, None, nc])
+        image.set_shape([None, None, 3])
+        image = tf.expand_dims(image, 0)
+        label = tf.expand_dims(label, 0)
+        if hypes['solver']['batch_size'] > 1:
+            logging.error("Using a batch_size of {} with unknown shape."
+                          .format(hypes['solver']['batch_size']))
+            logging.error("Set batch_size to 1 or use `reseize_image` "
+                          "or `crop_patch` to obtain a defined shape")
+            raise ValueError
+    else:
+        image, label = q.dequeue_many(hypes['solver']['batch_size'])
 
-    input_image = tf.expand_dims(image, 0)
-    tf.summary.image('input_image', input_image,10)
-
-    #image = tf.Print (image, [tf.reduce_max(image, reduction_indices=[0,1])], " Max ")
-    #image = tf.Print (image, [tf.reduce_min(image, reduction_indices=[0,1])], " Min ")
-    image, label = _processe_image(hypes, image, label)
-    #image = tf.Print (image, [tf.reduce_max(image, reduction_indices=[0,1])], " Max After ")
-    #image = tf.Print (image, [tf.reduce_min(image, reduction_indices=[0,1])], " Min After ")
-
-
-
-
-    label = tf.expand_dims(label, 0)
-    image = tf.expand_dims(image, 0)
-
+    image = _processe_image(hypes, image)
 
     # Display the training images in the visualizer.
-    tf.summary.image('clipped', image, 10)
+    tensor_name = image.op.name
+    tf.summary.image(tensor_name + '/image', image)
 
-    tube0 = tf.expand_dims(tf.to_float(label[:, :, :, 0]), 3)
-    tf.summary.image('0', tube0 , 10)
-    tube0 = tf.expand_dims(tf.to_float(label[:, :, :, 1]), 3)
-    tf.summary.image('1', tube0 , 10)
-    tube0 = tf.expand_dims(tf.to_float(label[:, :, :, 2]), 3)
-    tf.summary.image('2', tube0 , 10)
-    tube0 = tf.expand_dims(tf.to_float(label[:, :, :, 3]), 3)
-    tf.summary.image('3', tube0 , 10)
+    road = tf.expand_dims(tf.to_float(label[:, :, :, 0]), 3)
+    tf.summary.image(tensor_name + '/gt_image', road)
+
     return image, label
 
 
