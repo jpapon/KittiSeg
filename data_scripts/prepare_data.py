@@ -40,7 +40,7 @@ def make_val_split(file_tuples, data_folder):
     """
 
 
-    test_num = 10
+    test_num = VAL_PROP*len(file_tuples)
 
     shuffle(file_tuples)
 
